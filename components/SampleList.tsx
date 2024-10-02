@@ -29,7 +29,7 @@ const SampleList = ({ samples, directories, handleSaveSample, onDirectoryClick }
                 onChange={(e) => setSearchText(e.target.value)}
                 // className="w-full px-4 py-1 rounded-full border text-black"
             />
-
+            {console.log({filteredDirectories})}
             <div className="overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {filteredDirectories.map((dir) => (
                     <DirectoryCard

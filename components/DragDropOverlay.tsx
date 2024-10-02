@@ -20,6 +20,7 @@ const DragDropOverlay = ({
     const dragTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const isInternalDrag = useRef(false);
 
+
     const resetDragging = useRef(
         debounce(() => {
             console.log("resetDragging");
@@ -80,7 +81,6 @@ const DragDropOverlay = ({
             if (newFiles.length > 0) {
                 onDrop(newFiles);
             }
-
 
 
             setIsDragging(false);

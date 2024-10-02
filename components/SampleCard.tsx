@@ -6,6 +6,8 @@ import EditSampleModal from "./EditSampleModal";
 import { readBinaryFile } from "@tauri-apps/api/fs";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { motion } from "framer-motion";
+import { getSampleDirectory } from "@/lib/sample";
+import { path } from "@tauri-apps/api";
 
 const ProgressUnderlay = ({ progress }: { progress: number }) => {
     return (
@@ -55,8 +57,8 @@ const SampleCard: React.FC<SampleCardProps> = ({
 
     const handleSampleClick = async (url: string) => {
         try {
-            
-            const uint8Array = await readBinaryFile(url);
+            const sampleDir = await getSampleDirectory();
+            const uint8Array = await readBinaryFile(await path.join(sampleDir, url));
             const arrayBuffer = uint8Array.buffer;
             const audioContext = new (window.AudioContext ||
                 (window as any).webkitAudioContext)();
