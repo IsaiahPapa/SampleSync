@@ -72,7 +72,8 @@
                 "resizable": true,
                 "title": "SampleSync",
                 "width": 800,
-                "transparent": true
+                "transparent": true,
+                "fileDropEnabled": true
             }
         ]
     }

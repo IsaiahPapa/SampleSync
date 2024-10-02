@@ -1,6 +1,18 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { AudioSample } from "@/hooks/useSampleManager";
+import { AudioSample } from "@/lib/types";
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+  } from "@/components/ui/dialog"
 
 interface EditSampleModalProps {
     isOpen: boolean;
@@ -15,11 +27,11 @@ const EditSampleModal: React.FC<EditSampleModalProps> = ({
     sample,
     onSave,
 }) => {
-    const [name, setName] = useState(sample.name);
+    const [title, setTitle] = useState(sample.title);
     const [tags, setTags] = useState<string[]>(sample.tags);
 
     const handleSave = () => {
-        onSave({ ...sample, name, tags });
+        onSave({ ...sample, title, tags });
         onClose();
     };
 
@@ -38,75 +50,62 @@ const EditSampleModal: React.FC<EditSampleModalProps> = ({
         setTags(newTags);
     };
 
-    if (!isOpen) return null;
-
     return (
-        <motion.div
-            className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-        >
-            <motion.div
-                className="bg-white p-6 rounded-lg shadow-lg"
-                initial={{ scale: 0.8 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0.8 }}
-            >
-                <h2 className="text-xl font-bold mb-4">Edit {sample.name}</h2>
-                <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700">
-                        Name
-                    </label>
-                    <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="border p-2 rounded w-full"
-                    />
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Edit {sample.title}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                    <div>
+                        <Label htmlFor="name">Name</Label>
+                        <Input
+                            id="name"
+                            type="text"
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                            className="mt-1"
+                        />
+                    </div>
+                    <div>
+                        <Label>Tags</Label>
+                        {tags.map((tag, index) => (
+                            <div key={index} className="flex items-center mt-2">
+                                <Input
+                                    type="text"
+                                    value={tag}
+                                    onChange={(e) =>
+                                        handleTagChange(index, e.target.value)
+                                    }
+                                    className="flex-1 mr-2"
+                                />
+                                <Button
+                                    variant="destructive"
+                                    onClick={() => handleRemoveTag(index)}
+                                >
+                                    Remove
+                                </Button>
+                            </div>
+                        ))}
+                        <Button
+                            variant="secondary"
+                            onClick={handleAddTag}
+                            className="mt-2"
+                        >
+                            Add Tag
+                        </Button>
+                    </div>
                 </div>
-                <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700">
-                        Tags
-                    </label>
-                    {tags.map((tag, index) => (
-                        <div key={index} className="flex items-center mb-2">
-                            <input
-                                type="text"
-                                value={tag}
-                                onChange={(e) =>
-                                    handleTagChange(index, e.target.value)
-                                }
-                                className="border p-2 rounded mr-2 flex-1"
-                            />
-                            <button
-                                onClick={() => handleRemoveTag(index)}
-                                className="text-red-500"
-                            >
-                                Remove
-                            </button>
-                        </div>
-                    ))}
-                    <button
-                        onClick={handleAddTag}
-                        className="bg-blue-500 text-white px-4 py-2 rounded"
-                    >
-                        Add Tag
-                    </button>
-                </div>
-                <div className="mt-4 flex justify-end">
-                    <button onClick={onClose} className="mr-2">
+                <DialogFooter>
+                    <Button variant="secondary" onClick={onClose}>
                         Cancel
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        className="bg-green-500 text-white px-4 py-2 rounded"
-                    >
+                    </Button>
+                    <Button onClick={handleSave}>
                         Save
-                    </button>
-                </div>
-            </motion.div>
-        </motion.div>
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 };
 

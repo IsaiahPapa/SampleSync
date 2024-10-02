@@ -1,0 +1,37 @@
+# Project overview
+
+This project is a desktop app that allows you to manage, and sync audio samples securely and privately across devices. 
+
+It is built with tauri, Next.js 14, Tailwind CSS, shadcn, and lucide icons.
+
+# Core Functionality
+1. Upload, manage, and play audio samples
+2. Sync samples between devices (usually macos and windows)
+3. Encrypted and private sample storage
+3a. Encrypted sample storage is keyed to your user account, so you have a private library of audio samples that you can access from any device that you've synced with.
+4. Consider any use for AI. If you feel there would be a good use for ai in a specific part of the app explain your reasoning and ask if it would be worth implementing.
+
+## Future Ideas
+- AI Stem splitting for a sample (https://github.com/hedonhermdev/tune-prism/blob/main/src-tauri/src/routes/split.rs)
+
+## Project structure
+The project is organized as follows:
+
+- `app/` - Next.js app
+- `components/` - React components
+- `lib/` - library code
+- `public/` - public assets
+- `styles/` - global styles
+- `types/` - TypeScript types
+- `utils/` - utility functions
+
+
+# Code Style and Structure
+- Write concise, technical TypeScript code with accurate examples
+- Use functional and declarative programming patterns; avoid classes
+- Prefer iteration and modularization over code duplication
+
+# UI and Styling
+- Use Shadcn UI and Tailwind for components and styling
+- use framer motion for animations
+- Implement responsive design with Tailwind CSS; use a mobile-first approach

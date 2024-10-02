@@ -3,10 +3,6 @@
 @tailwind utilities;
 
 html, body { background: transparent }
-:root {
-    --background: #ffffff;
-    --foreground: #171717;
-}
 
 body {
     color: white;
@@ -37,3 +33,6 @@ body {
     text-wrap: balance;
   }
 } */
+
+@layer base {
+  :root { --radius: 0.5rem } }

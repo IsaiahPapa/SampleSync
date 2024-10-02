@@ -1,94 +1,42 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
     readDir,
     BaseDirectory,
     writeBinaryFile,
+    readBinaryFile,
     createDir,
-    readTextFile,
 } from "@tauri-apps/api/fs";
 import SampleList from "./SampleList";
 import DragDropOverlay from "./DragDropOverlay";
-import { AudioSample } from "@/hooks/useSampleManager";
-import { join } from "@tauri-apps/api/path"; // Import the join function
+
+import { join, resolve } from "@tauri-apps/api/path"; // Import the join function
 import { path } from "@tauri-apps/api";
+import { calculateFileHash, getAudioInfo } from "@/lib/audio";
+import { ensureSampleDirectoryExists, loadSampleInformation, saveSampleInformation, SAMPLE_DIR, createSample, getSampleDirectory } from "@/lib/sample";
+import { AudioSample } from "@/lib/types";
+import toast from "react-hot-toast";
 
-const ensureSampleDirectoryExists = async () => {
-    try {
-        await createDir(SAMPLE_DIR, {
-            dir: BaseDirectory.Document,
-            recursive: true,
-        });
-    } catch (err) {
-        console.error("Error creating sample directory:", err);
-    }
-};
-
-const SAMPLE_DIR = "SampleSync"; // Folder name where samples are stored
-
-const saveMetadata = async (fileName: string, tags: string[]) => {
-    const metadata = { tags };
-    const metadataFileName = `${fileName}.json`;
-    await writeBinaryFile(
-        `${SAMPLE_DIR}/${metadataFileName}`,
-        new TextEncoder().encode(JSON.stringify(metadata)),
-        {
-            dir: BaseDirectory.Document,
-        }
-    );
-};
-
-const loadMetadata = async (fileName: string) => {
-    try {
-        const metadataFileName = `${fileName}.json`;
-        const metadataPath = await join(
-            await path.documentDir(),
-            SAMPLE_DIR,
-            metadataFileName
-        );
-        const metadataContent = await readTextFile(metadataPath, {
-            dir: BaseDirectory.Document,
-        });
-        return JSON.parse(metadataContent);
-    } catch (err) {
-        console.error("Error loading metadata:", err);
-        return { tags: [] };
-    }
-};
-
-const addTagToFile = async (fileName: string, newTag: string) => {
-    try {
-        const metadata = await loadMetadata(fileName);
-        if (!metadata.tags.includes(newTag)) {
-            metadata.tags.push(newTag);
-            await saveMetadata(fileName, metadata.tags);
-        }
-    } catch (err) {
-        console.error("Error adding tag to file:", err);
-    }
-};
-
-const removeTagFromFile = async (fileName: string, tagToRemove: string) => {
-    try {
-        const metadata = await loadMetadata(fileName);
-        const updatedTags = metadata.tags.filter((tag: string) => tag !== tagToRemove);
-        await saveMetadata(fileName, updatedTags);
-    } catch (err) {
-        console.error("Error removing tag from file:", err);
-    }
-};
 
 const SampleManager = () => {
     const [samples, setSamples] = useState<AudioSample[]>([]);
+    const [currentDir, setCurrentDir] = useState<string>("");
+    const [directories, setDirectories] = useState<string[]>([]);
+    const [baseDir, setBaseDir] = useState<string>("");
 
-    const handleSaveSample = async (updatedSample: AudioSample) => {
+    const canGoBack = useMemo(() => currentDir !== baseDir, [currentDir, baseDir]);
+
+    const handleSaveSample = async (s: AudioSample) => {
         try {
-            await saveMetadata(updatedSample.name, updatedSample.tags);
+            const fileName = s.originalName.split('/').pop();
+            if (!fileName) {
+                console.error("No file name for sample", s);
+                return;
+            }
+            await saveSampleInformation(fileName, s);
             setSamples((prevSamples) =>
-                prevSamples.map((sample) =>
-                    sample.id === updatedSample.id ? updatedSample : sample
-                )
+                prevSamples.map((sample) => (sample.id === s.id ? s : sample))
             );
         } catch (err) {
             console.error("Error saving sample:", err);
@@ -96,71 +44,78 @@ const SampleManager = () => {
     };
 
     // Function to load samples from the directory
-    const loadSamplesFromDirectory = async () => {
+    const loadSamplesFromDirectory = async (dir: string) => {
         try {
+            console.log('Loading samples from directory:', dir);
             // Read the directory containing samples
-            const entries = await readDir(SAMPLE_DIR, {
-                dir: BaseDirectory.Document,
+            const entries = await readDir(dir, {
+                recursive: false,
             });
 
             // Map the files to AudioSample objects
-            const loadedSamples: AudioSample[] = await Promise.all(
+            const audioSamples = await Promise.all(
                 entries
-                    .filter((entry) => entry.name?.endsWith(".wav")) // You can adjust the file extension as needed
+                    
+                    .filter((entry) => {
+                        const audioExtensions = [
+                            ".aiff",
+                            ".ds",
+                            ".dwp",
+                            ".flac",
+                            ".mp3",
+                            ".ogg",
+                            ".sf2",
+                            ".speech",
+                            ".syn",
+                            ".xi",
+                            ".wav",
+                        ];
+                        return audioExtensions.some((ext) =>
+                            entry.name?.toLowerCase().endsWith(ext)
+                        );
+                    })
+                    .filter((entry) => entry.path && !entry.children)
                     .map(async (entry, index) => {
-                        const metadata = await loadMetadata(entry.name || "Unknown");
-                        return {
-                            id: String(index),
-                            name: entry.name || "Unknown",
-                            tags: metadata.tags,
-                            url: entry.path,
-                        };
+                        const metadata = await loadSampleInformation(
+                            entry.path
+                        );
+                        if (!metadata) {
+                            const sample = await createSample(
+                                entry.path,
+                                SAMPLE_DIR
+                            );
+                            console.error("No metadata for sample", entry);
+                            return sample;
+                        }
+                        return metadata;
                     })
             );
 
-            setSamples(loadedSamples);
+            const validAudioSamples = audioSamples.filter(
+                (sample) => sample !== undefined
+            );
+
+            setSamples(validAudioSamples);
+            setDirectories(entries.filter((entry) => entry.children).map((entry) => entry.path));
         } catch (err) {
             console.error("Error loading samples from directory:", err);
         }
     };
 
-    // Handle file drop
+    const handleDirectoryClick = (dir: string) => {
+        setCurrentDir(dir);
+    };
+    
     const handleFileDrop = async (files: File[]) => {
         try {
             console.log('Dropped files:', files);
             for (const file of files) {
-                // Read file as binary data
-                const fileArrayBuffer = await file.arrayBuffer();
-                const binaryData = new Uint8Array(fileArrayBuffer);
-
-                // Save the file to the samples directory using Tauri
-                await writeBinaryFile(
-                    `${SAMPLE_DIR}/${file.name}`,
-                    binaryData,
-                    {
-                        dir: BaseDirectory.Document,
-                    }
-                );
-
-                // Save metadata
-                await saveMetadata(file.name, ["new"]);
-
-                // Construct the full URL path
-                const filePath = await join(
-                    await path.documentDir(),
-                    SAMPLE_DIR,
-                    file.name
-                );
-
-                // Optionally add the file to the sample list immediately
+                const filePath = await path.resolve(file.name);
+                const sample = await createSample(filePath, SAMPLE_DIR);
+                toast.success(`Sample ${sample.title} created`);
                 setSamples((prevSamples) => [
                     ...prevSamples,
-                    {
-                        id: String(prevSamples.length),
-                        name: file.name,
-                        tags: ["new"],
-                        url: filePath,
-                    },
+                    sample,
                 ]);
             }
         } catch (err) {
@@ -168,19 +123,70 @@ const SampleManager = () => {
         }
     };
 
+    const handleCreateDirectory = async () => {
+        const newDirName = prompt("Enter new directory name:");
+        if (newDirName) {
+            const newDirPath = `${currentDir}/${newDirName}`;
+            try {
+                await createDir(newDirPath, { dir: BaseDirectory.Document, recursive: true });
+                toast.success(`Directory ${newDirName} created`);
+                loadSamplesFromDirectory(currentDir);
+            } catch (err) {
+                console.error("Error creating directory:", err);
+                toast.error("Failed to create directory");
+            }
+        }
+    };
+
+    const handleGoBack = () => {
+        if(!canGoBack) return;
+        const parentDir = currentDir.split('/').slice(0, -1).join('/');
+        setCurrentDir(parentDir || baseDir);
+        
+    };
+
     useEffect(() => {
         const mount = async () => {
             await ensureSampleDirectoryExists();
-            // Load samples when the component mounts
-            await loadSamplesFromDirectory();
+            const resolvedBaseDir = await getSampleDirectory();
+            setBaseDir(resolvedBaseDir);
+            setCurrentDir(resolvedBaseDir);
+            await loadSamplesFromDirectory(resolvedBaseDir);
         };
         mount();
     }, []);
 
+    useEffect(() => {
+        loadSamplesFromDirectory(currentDir);
+    }, [currentDir]);
+    
+    console.log({currentDir, directories});
+
     return (
         <div className="relative flex flex-col gap-6 p-6">
-            <DragDropOverlay onDrop={handleFileDrop} />
-            <SampleList handleSaveSample={handleSaveSample} samples={samples} />
+            <div className="flex justify-between items-center">
+                <button
+                    className="bg-blue-500 text-white px-4 py-2 rounded"
+                    onClick={handleCreateDirectory}
+                >
+                    Add Directory
+                </button>
+                {canGoBack && (
+                    <button
+                        className="bg-gray-500 text-white px-4 py-2 rounded"
+                        onClick={handleGoBack}
+                    >
+                        Go Back
+                    </button>
+                )}
+            </div>
+            <DragDropOverlay samples={samples} onDrop={handleFileDrop} />
+            <SampleList
+                handleSaveSample={handleSaveSample}
+                samples={samples}
+                directories={directories}
+                onDirectoryClick={handleDirectoryClick}
+            />
         </div>
     );
 };
