@@ -4,7 +4,7 @@
 use tauri::Manager;
 use window_vibrancy::*;
 mod watcher;
-
+mod commands;
 fn main() {
   tauri::Builder::default()
     .setup(|app| {
@@ -21,7 +21,7 @@ fn main() {
         Ok(())
     })
     .plugin(tauri_plugin_drag::init())
-    .invoke_handler(tauri::generate_handler![watcher::start_watcher])
+    .invoke_handler(tauri::generate_handler![watcher::start_watcher, commands::is_dir])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }

@@ -1,55 +1,87 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import {
-    readDir,
-    BaseDirectory,
-    writeBinaryFile,
-    readBinaryFile,
-    createDir,
-} from "@tauri-apps/api/fs";
-import SampleList from "./SampleList";
+import { readDir } from "@tauri-apps/api/fs";
 import DragDropOverlay from "./DragDropOverlay";
 
-import { join, resolve } from "@tauri-apps/api/path"; // Import the join function
+import { normalize } from "@tauri-apps/api/path"; // Import the join function
 import { path } from "@tauri-apps/api";
-import { calculateFileHash, getAudioInfo } from "@/lib/audio";
-import { ensureSampleDirectoryExists, loadSampleInformation, saveSampleInformation, SAMPLE_DIR, createSample, getSampleDirectory } from "@/lib/sample";
-import { AudioSample } from "@/lib/types";
+import {
+    ensureSampleDirectoryExists,
+    loadSampleInformation,
+    saveSampleInformation,
+    SAMPLE_DIR,
+    createSample,
+} from "@/lib/sample";
+import { AudioSample, FileWithDirectory } from "@/lib/types";
 import toast from "react-hot-toast";
-import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/tauri";
+import { Input } from "./ui/input";
+import DirectoryCard from "./DirectoryCard";
+import SampleCard from "./SampleCard";
+import DirectoryBreadcrumbs from "./DirectoryBreadcrumbs";
+import { motion } from "framer-motion";
 
+const BackButton = ({ onBack }: { onBack: () => void }) => {
+    return (
+        <motion.button
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.5 }}
+            className="text-white bg-opacity-10 bg-white p-2 px-4 rounded-xl shadow-md hover:shadow-lg cursor-pointer"
+            onClick={onBack}
+        >
+            Go Back
+        </motion.button>
+    );
+};
 
 const SampleManager = () => {
     const [samples, setSamples] = useState<AudioSample[]>([]);
     const [directories, setDirectories] = useState<string[]>([]);
 
-    const [currentDir, setCurrentDir] = useState<string>("");
-
+    const [currentDir, setCurrentDir] = useState<string>("/");
 
     const canGoBack = useMemo(() => currentDir !== "/", [currentDir]);
 
+    const [searchText, setSearchText] = useState("");
+
+    const filteredSamples = searchText
+        ? samples.filter((sample) =>
+              sample.title.toLowerCase().includes(searchText.toLowerCase())
+          )
+        : samples;
+    const filteredDirectories = searchText
+        ? directories.filter((dir) =>
+              dir.toLowerCase().includes(searchText.toLowerCase())
+          )
+        : directories;
+
     const getEntries = useCallback(async (realtiveDirectory: string) => {
-        const absoluteDirectory = await path.join(await path.join(await path.documentDir(), SAMPLE_DIR),  realtiveDirectory);
-        console.log('getEntries', {absoluteDirectory});
+        const absoluteDirectory = await path.join(
+            await path.join(await path.documentDir(), SAMPLE_DIR),
+            realtiveDirectory
+        );
         const entries = await readDir(absoluteDirectory, {
             recursive: false,
         });
-        return entries
+        return entries;
     }, []);
+
     const loadDirectories = async (realtiveDirectory: string) => {
-        const absoluteDirectory = await path.join(await path.join(await path.documentDir(), SAMPLE_DIR),  realtiveDirectory);
-        const entries = await getEntries(realtiveDirectory);
-        const directories = entries.filter((entry) => entry.children).map((entry) => entry.path.replace(absoluteDirectory, ''))
-        setDirectories(
-            directories
+        const absoluteDirectory = await path.join(
+            await path.join(await path.documentDir(), SAMPLE_DIR),
+            realtiveDirectory
         );
+        const entries = await getEntries(realtiveDirectory);
+        const directories = entries
+            .filter((entry) => entry.children)
+            .map((entry) => entry.path.replace(absoluteDirectory, ""));
+        setDirectories(directories);
     };
 
     const handleSaveSample = async (s: AudioSample) => {
         try {
-            const fileName = s.originalName.split('/').pop();
+            const fileName = s.originalName.split("/").pop();
             if (!fileName) {
                 console.error("No file name for sample", s);
                 return;
@@ -63,18 +95,15 @@ const SampleManager = () => {
         }
     };
 
-
-
     // Function to load samples from the directory
     const loadSamplesFromDirectory = async (realtiveDirectory: string) => {
         try {
-            
             const entries = await getEntries(realtiveDirectory);
 
             // Map the files to AudioSample objects
             const audioSamples = await Promise.all(
                 entries
-                    
+
                     .filter((entry) => {
                         const audioExtensions = [
                             ".aiff",
@@ -115,100 +144,101 @@ const SampleManager = () => {
             );
 
             setSamples(validAudioSamples);
-
         } catch (err) {
             console.error("Error loading samples from directory:", err);
         }
     };
+    const reload = useCallback(() => {
+        loadDirectories(currentDir);
+        loadSamplesFromDirectory(currentDir);
+    }, [loadDirectories, loadSamplesFromDirectory, currentDir]);
 
-    const handleDirectoryClick = (realtiveDirectory: string) => {
-        //Go deeper into the directory
-        setCurrentDir((current) => current + realtiveDirectory);
+    const handleDirectoryClick = async (realtiveDirectory: string) => {
+        const newDir = await normalize(currentDir + realtiveDirectory);
+        setCurrentDir(newDir);
     };
-    
-    const handleFileDrop = async (files: File[]) => {
+
+    const handleFileDrop = async (files: FileWithDirectory[]) => {
         try {
-            console.log('Dropped files:', files);
-            for (const file of files) {
+            console.log("Dropped files:", files);
+            for (const { file, directory } of files) {
                 const filePath = await path.resolve(file.name);
-                const sample = await createSample(filePath, currentDir);
+                const saveDirectory = await path.join(currentDir, ...directory);
+
+                const sample = await createSample(filePath, saveDirectory);
                 toast.success(`Sample ${sample.title} created`);
-                setSamples((prevSamples) => [
-                    ...prevSamples,
-                    sample,
-                ]);
+                reload();
+                // setSamples((prevSamples) => [
+                //     ...prevSamples,
+                //     sample,
+                // ]);
             }
         } catch (err) {
             console.error("Error saving files:", err);
         }
     };
 
-    // const handleCreateDirectory = async () => {
-    //     const newDirName = prompt("Enter new directory name:");
-    //     if (newDirName) {
-    //         const newDirPath = `${currentDir}/${newDirName}`;
-    //         try {
-    //             await createDir(newDirPath, { dir: BaseDirectory.Document, recursive: true });
-    //             toast.success(`Directory ${newDirName} created`);
-    //             loadSamplesFromDirectory(currentDir);
-    //         } catch (err) {
-    //             console.error("Error creating directory:", err);
-    //             toast.error("Failed to create directory");
-    //         }
-    //     }
-    // };
-
     const handleGoBack = async () => {
-        if(!canGoBack) return;
-        console.log('handleGoBack', {currentDir});
+        if (!canGoBack) return;
         const parentDir = await path.dirname(currentDir);
-        console.log('handleGoBack', { parentDir });
         setCurrentDir(parentDir || "/");
-        
     };
 
     useEffect(() => {
         const mount = async () => {
             await ensureSampleDirectoryExists();
-            setCurrentDir("");
-            loadDirectories("");
+            setCurrentDir("/");
+            loadDirectories("/");
         };
         mount();
-
     }, []);
 
     useEffect(() => {
-        loadDirectories(currentDir);
-        loadSamplesFromDirectory(currentDir);
+        reload();
     }, [currentDir]);
 
-
     return (
-        <div className="relative flex flex-col gap-6 p-6">
-            <div className="flex justify-between items-center">
-                {/* <button
-                    className="bg-blue-500 text-white px-4 py-2 rounded"
-                    onClick={handleCreateDirectory}
-                >
-                    Add Directory
-                </button> */}
-                {canGoBack && (
-                    <button
-                        className="bg-gray-500 text-white px-4 py-2 rounded"
-                        onClick={handleGoBack}
-                    >
-                        Go Back
-                    </button>
-                )}
-            </div>
+        <>
             <DragDropOverlay samples={samples} onDrop={handleFileDrop} />
-            <SampleList
-                handleSaveSample={handleSaveSample}
-                samples={samples}
-                directories={directories}
-                onDirectoryClick={handleDirectoryClick}
-            />
-        </div>
+            <div className="relative flex flex-col gap-6 p-6">
+                <Input
+                    type="text"
+                    placeholder="Search"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    // className="w-full px-4 py-1 rounded-full border text-black"
+                />
+
+                <div className="flex justify-between items-center h-8">
+                    <DirectoryBreadcrumbs
+                        onNewDirectory={(dir) => {
+                            console.log(dir);
+                            setCurrentDir(dir);
+                        }}
+                        currentDirectory={currentDir}
+                    />
+                    {canGoBack && <BackButton onBack={handleGoBack} />}
+                </div>
+
+                <div className="overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {filteredDirectories.map((dir) => (
+                        <DirectoryCard
+                            key={dir}
+                            directory={dir}
+                            onClick={() => handleDirectoryClick(dir)}
+                        />
+                    ))}
+                    {filteredSamples.map((sample) => (
+                        <SampleCard
+                            key={sample.id}
+                            sample={sample}
+                            isLocal={Math.random() > 0.5}
+                            onSaveSample={handleSaveSample}
+                        />
+                    ))}
+                </div>
+            </div>
+        </>
     );
 };
 

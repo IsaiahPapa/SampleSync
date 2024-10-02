@@ -26,3 +26,8 @@ export type RequireAtLeastOne<T> = {
 }[keyof T];
 
 
+
+export type FileWithDirectory = {
+    file: File;
+    directory: string[];
+}

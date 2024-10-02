@@ -63,8 +63,12 @@ export const createSample = async (absoluteOriginalFilePath: string, directory: 
         //     sampleDir,
         //     fileName
         // );
-
+        console.log("1")
         const targetDirectory = await join(await path.documentDir(), SAMPLE_DIR, directory);
+        console.log("2")
+        console.log({targetDirectory})
+        await createDir(targetDirectory, { recursive: true });
+
         const destinationPath = await join(targetDirectory, fileName);
         
 
